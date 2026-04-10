@@ -11,7 +11,8 @@ let package = Package(
         .executableTarget(
             name: "Terminos",
             dependencies: ["SwiftTerm"],
-            path: "Sources"
+            path: "Sources",
+            resources: [.copy("Resources")]
         ),
     ]
 )
