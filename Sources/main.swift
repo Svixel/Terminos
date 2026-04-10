@@ -7,8 +7,9 @@ import SwiftTerm
 private let bgColor = NSColor(red: 0x1C / 255.0, green: 0x1D / 255.0, blue: 0x24 / 255.0, alpha: 1.0)
 private let creamColor = NSColor(red: 0xF5 / 255.0, green: 0xF0 / 255.0, blue: 0xE8 / 255.0, alpha: 1.0)
 private let sidebarWidth: CGFloat = 220
-/// Width of the sidebar when collapsed — just the toggle button + symmetric padding.
-private let collapsedSidebarWidth: CGFloat = 48
+/// Width of the sidebar when collapsed. Matches `Theme.headerHeight` so the header
+/// area becomes a 1:1 square — toggle button on top, terminal-icon column under it.
+private let collapsedSidebarWidth: CGFloat = 40
 private let serverPanelWidth: CGFloat = 180
 private let commandLineUnicode: UInt32 = 988747 // HugeIcons command-line solid-rounded
 private let projectsPath = FileManager.default.homeDirectoryForCurrentUser
@@ -21,7 +22,7 @@ enum Theme {
     /// Default left/right padding inside a header.
     static let horizontalPadding: CGFloat = 20
     /// Size of a trailing action button slot inside a header.
-    static let headerButtonSize: CGFloat = 24
+    static let headerButtonSize: CGFloat = 18
     static let headerFontSize: CGFloat = 12
     static let rowHeight: CGFloat = 28
 
@@ -35,8 +36,8 @@ enum Theme {
 
 // MARK: - Font Registration
 
-private var terminalFont: NSFont = .monospacedSystemFont(ofSize: 13, weight: .light)
-private var uiFont: NSFont = .systemFont(ofSize: 13, weight: .regular)
+private var terminalFont: NSFont = .monospacedSystemFont(ofSize: 13, weight: .ultraLight)
+private var uiFont: NSFont = .systemFont(ofSize: 13, weight: .light)
 private var iconFontName: String?
 
 private func registerFonts() {
@@ -53,14 +54,15 @@ private func registerFonts() {
         }
     }
 
-    // Resolve Azeret Mono. Terminal uses the light weight; UI uses the regular weight.
-    // Using the same family everywhere keeps the app visually unified.
-    if let base = NSFont(name: "AzeretMono-Regular", size: 13) ?? NSFont(name: "Azeret Mono", size: 13) {
-        let lightDesc = base.fontDescriptor.addingAttributes([
-            .traits: [NSFontDescriptor.TraitKey.weight: NSFont.Weight.light.rawValue]
-        ])
-        terminalFont = NSFont(descriptor: lightDesc, size: 13) ?? base
-        uiFont = base
+    // Address Azeret Mono's named instances directly by PostScript name. Going
+    // through fontDescriptor weight traits on a variable font applies a variation
+    // coordinate instead of picking the hinted named instance, which renders
+    // soft at small sizes.
+    if let ui = NSFont(name: "AzeretMono-Light", size: 13) {
+        uiFont = ui
+    }
+    if let term = NSFont(name: "AzeretMono-ExtraLight", size: 13) {
+        terminalFont = term
     }
 
     // Resolve icon font - find the PostScript name
@@ -362,10 +364,12 @@ class Tab {
         terminalView.layer?.backgroundColor = bgColor.cgColor
         terminalView.font = terminalFont
 
-        // Hide the scroller
+        // Hide the scrollbar visually but keep the NSScroller in the hierarchy so
+        // SwiftTerm's wheel/trackpad scrolling continues to work. Setting isHidden
+        // would remove it from event routing in some configurations.
         for subview in terminalView.subviews {
             if subview is NSScroller {
-                subview.isHidden = true
+                subview.alphaValue = 0
             }
         }
 
@@ -408,12 +412,10 @@ final class DividerView: NSView {
     required init?(coder: NSCoder) { fatalError() }
 }
 
-/// Running-server indicator. Hardcoded tag=100 so `HoverRowView.viewWithTag`
-/// picks it up alongside the terminal-icon variant, since `NSView.tag` is
-/// read-only on plain NSView.
+/// Solid colored circle used as a status indicator. Default `tag` (-1) so the
+/// row's hover handler ignores it — the dot stays at full alpha regardless of
+/// hover state.
 final class StatusDotView: NSView {
-    override var tag: Int { 100 }
-
     init(diameter: CGFloat, color: NSColor) {
         super.init(frame: NSRect(x: 0, y: 0, width: diameter, height: diameter))
         wantsLayer = true
@@ -428,7 +430,7 @@ final class StatusDotView: NSView {
 /// Icon button with a themed hover effect: SVG tint fades from `baseAlpha` to
 /// `hoverAlpha` when the cursor enters, matching the alpha shift used by sidebar
 /// rows. Both variants are rendered once at init and cached.
-final class HoverIconButton: NSButton {
+class HoverIconButton: NSButton {
     private let baseImage: NSImage?
     private let hoverImage: NSImage?
     private var trackingArea: NSTrackingArea?
@@ -482,12 +484,17 @@ final class HeaderBar: NSView {
     private let titleLabel = NSTextField(labelWithString: "")
     private let divider = DividerView(frame: .zero)
     private var trailingButton: NSButton?
+    /// Optional centered icon used in narrow mode. When the bar shrinks below
+    /// `narrowThreshold`, the title hides and this icon is shown instead.
+    private var narrowIconView: NSImageView?
     private let leftInset: CGFloat
+    /// Width below which the header switches to narrow mode (title hidden, icon centered).
+    private let narrowThreshold: CGFloat = 60
 
     /// Let the user drag the window by grabbing any empty area of the header.
     override var mouseDownCanMoveWindow: Bool { true }
 
-    init(title: String, leftInset: CGFloat = Theme.horizontalPadding) {
+    init(title: String, leftInset: CGFloat = Theme.horizontalPadding, narrowIcon: NSImage? = nil) {
         self.leftInset = leftInset
         super.init(frame: .zero)
         wantsLayer = true
@@ -502,6 +509,15 @@ final class HeaderBar: NSView {
 
         addSubview(titleLabel)
         addSubview(divider)
+
+        if let icon = narrowIcon {
+            let iv = NSImageView()
+            iv.image = icon
+            iv.imageScaling = .scaleProportionallyUpOrDown
+            iv.isHidden = true
+            addSubview(iv)
+            narrowIconView = iv
+        }
     }
 
     @available(*, unavailable)
@@ -528,6 +544,12 @@ final class HeaderBar: NSView {
     }
 
     private func layoutContent() {
+        let isNarrow = bounds.width <= narrowThreshold
+
+        // Title is hidden in narrow mode so the icon (or trailing button) can claim
+        // the visible area without competing for space.
+        titleLabel.isHidden = isNarrow
+
         let trailingReserved: CGFloat = trailingButton != nil ? (Theme.headerButtonSize + 16) : Theme.horizontalPadding
         let labelSize = titleLabel.intrinsicContentSize
         let labelWidth = max(0, bounds.width - leftInset - trailingReserved)
@@ -538,9 +560,24 @@ final class HeaderBar: NSView {
             height: labelSize.height
         )
 
+        if let iconView = narrowIconView {
+            iconView.isHidden = !isNarrow
+            let size: CGFloat = 14
+            iconView.frame = NSRect(
+                x: (bounds.width - size) / 2,
+                y: (bounds.height - size) / 2,
+                width: size,
+                height: size
+            )
+        }
+
         if let button = trailingButton {
+            // Right-align in normal widths, but if the bar is too narrow for the
+            // right-edge formula (collapsed sidebar rail), fall back to centered.
+            let preferredX = bounds.width - Theme.headerButtonSize - 12
+            let buttonX = preferredX < 4 ? max(0, (bounds.width - Theme.headerButtonSize) / 2) : preferredX
             button.frame = NSRect(
-                x: bounds.width - Theme.headerButtonSize - 12,
+                x: buttonX,
                 y: (bounds.height - Theme.headerButtonSize) / 2,
                 width: Theme.headerButtonSize,
                 height: Theme.headerButtonSize
@@ -713,15 +750,18 @@ class ProjectSidebarView: NSView {
     private var projects: [(name: String, gitStatus: GitStatus, techStack: TechStack)] = []
     private var hoverTrackingArea: NSTrackingArea?
 
-    // /SERVERS section (bottom of left sidebar)
+    // :SERVERS section (bottom of left sidebar)
     private let serversHeader: HeaderBar
     private let serversScrollView: NSScrollView
     private let serversTableView: NSTableView
+    /// Hairline that sits flush with the top edge of the :SERVERS section so the
+    /// boundary between the project list and the server list is visible.
+    private let serversTopDivider: DividerView
     /// Server list shown in the bottom section of the sidebar. Each entry pairs the
     /// raw server with the name of the project its working directory belongs to.
     private var runningServers: [(server: ServerInfo, projectName: String?)] = []
-    /// Floor for the bottom /SERVERS section. The section is responsive above this.
-    private let serverSectionMinHeight: CGFloat = 400
+    /// Floor for the bottom :SERVERS section. The section is responsive above this.
+    private let serverSectionMinHeight: CGFloat = 280
 
     override init(frame: NSRect) {
         header = HeaderBar(title: "/CODE")
@@ -736,9 +776,11 @@ class ProjectSidebarView: NSView {
         scrollView = NSScrollView(frame: .zero)
         tableView = NSTableView(frame: scrollView.bounds)
 
-        serversHeader = HeaderBar(title: "/SERVERS")
+        let serverIcon = loadSVGIcon(named: "mcp-server-solid-sharp.svg", size: 14, alpha: 0.6)
+        serversHeader = HeaderBar(title: ":SERVERS", narrowIcon: serverIcon)
         serversScrollView = NSScrollView(frame: .zero)
         serversTableView = NSTableView(frame: .zero)
+        serversTopDivider = DividerView(frame: .zero)
 
         super.init(frame: frame)
 
@@ -751,10 +793,16 @@ class ProjectSidebarView: NSView {
 
         addSubview(header)
         addSubview(serversHeader)
+        addSubview(serversTopDivider)
 
         loadProjects()
         setupTableView()
         setupServersTableView()
+
+        // Force initial layout — `MainLayoutView.applyLayout` will set our frame to
+        // the same dimensions we were created with, so AppKit's `resizeSubviews`
+        // never fires on its own.
+        performLayout()
     }
 
     override func updateTrackingAreas() {
@@ -778,20 +826,14 @@ class ProjectSidebarView: NSView {
         onMouseExit?()
     }
 
-    /// Fade the project list out in rail mode and back in when expanded. Called from
-    /// `MainLayoutView.applyLayout` so the fade animates in lockstep with the sidebar
-    /// frame animation.
-    func setContentVisible(_ visible: Bool, animated: Bool) {
-        let target: CGFloat = visible ? 1.0 : 0.0
-        if animated {
-            scrollView.animator().alphaValue = target
-        } else {
-            scrollView.alphaValue = target
-        }
-    }
+    /// Hook for `MainLayoutView` to notify the sidebar of collapse changes. Both
+    /// project rows and server rows stay visible in rail mode — the rail simply
+    /// clips them down to their leading glyphs (terminal icons / status dots).
+    /// No fades needed today, so this is a no-op kept for future use.
+    func setContentVisible(_ visible: Bool, animated: Bool) {}
 
-    /// Refresh the bottom /SERVERS section. Each server is paired with the name of the
-    /// project its cwd lives inside, so the row can show "project · framework" inline.
+    /// Refresh the bottom :SERVERS section. Each server is paired with the name
+    /// of the project its working directory lives inside.
     func updateServers(_ servers: [ServerInfo]) {
         runningServers = servers.map { server -> (server: ServerInfo, projectName: String?) in
             var projectName: String?
@@ -866,7 +908,7 @@ class ProjectSidebarView: NSView {
         serversTableView.addTableColumn(column)
         serversTableView.headerView = nil
         serversTableView.backgroundColor = .clear
-        serversTableView.rowHeight = 36
+        serversTableView.rowHeight = 32
         serversTableView.intercellSpacing = NSSize(width: 0, height: 0)
         serversTableView.selectionHighlightStyle = .none
         serversTableView.style = .plain
@@ -891,15 +933,24 @@ class ProjectSidebarView: NSView {
 
     override func resizeSubviews(withOldSize oldSize: NSSize) {
         super.resizeSubviews(withOldSize: oldSize)
+        performLayout()
+    }
 
+    /// Position every owned subview based on the current `bounds`. Called from
+    /// `resizeSubviews` AND from `init`, because AppKit short-circuits
+    /// `resizeSubviews` when the parent assigns a frame equal to the existing one,
+    /// which is exactly what `MainLayoutView.applyLayout` does for the sidebar at
+    /// startup. Without this manual call, the sidebar contents stay at .zero until
+    /// the first interaction nudges a relayout.
+    private func performLayout() {
         // Layout from top to bottom in y-up coordinates:
         //   /CODE header        (Theme.headerHeight)
         //   project list        (whatever's left)
-        //   /SERVERS header     (Theme.headerHeight)
+        //   :SERVERS header     (Theme.headerHeight)
         //   server list         (>= serverSectionMinHeight)
         //
-        // Server section is responsive (~45% of window) but never shorter than 400pt,
-        // and never tall enough to push the project list below 0.
+        // Server section is responsive (~45% of window) but never shorter than the
+        // floor, and never tall enough to push the project list below 0.
         let preferredServerHeight = max(serverSectionMinHeight, bounds.height * 0.45)
         let serverSectionHeight = min(preferredServerHeight, max(0, bounds.height - Theme.headerHeight))
 
@@ -923,6 +974,15 @@ class ProjectSidebarView: NSView {
             y: serverSectionHeight - Theme.headerHeight,
             width: bounds.width,
             height: Theme.headerHeight
+        )
+
+        // 1pt hairline along the top edge of the :SERVERS section, marking the
+        // boundary between the project list and the server list above the header.
+        serversTopDivider.frame = NSRect(
+            x: 0,
+            y: serverSectionHeight,
+            width: bounds.width,
+            height: 1
         )
 
         serversScrollView.frame = NSRect(
@@ -1010,9 +1070,9 @@ extension ProjectSidebarView: NSTableViewDataSource, NSTableViewDelegate {
         return cell
     }
 
-    /// Server row in the bottom /SERVERS section. Modeled after the (former) right
-    /// panel: ":port" on top, "project · framework" underneath, Safari/Chrome buttons
-    /// on the trailing edge.
+    /// Server row in the bottom :SERVERS section. Layout matches the project rows:
+    /// leading status dot at x=24 (centered on the project icon column), title at
+    /// x=42 (same as project names), Safari/Chrome buttons trailing.
     private func makeServerCell(row: Int) -> NSView {
         let cellID = NSUserInterfaceItemIdentifier("LeftServerCell")
         let cell = serversTableView.makeView(withIdentifier: cellID, owner: nil) as? NSTableCellView
@@ -1022,39 +1082,47 @@ extension ProjectSidebarView: NSTableViewDataSource, NSTableViewDelegate {
 
         let item = runningServers[row]
         let cellWidth = bounds.width
+        let rowHeight: CGFloat = 32
 
-        let portLabel = NSTextField(labelWithString: ":\(item.server.port)")
-        portLabel.tag = 101
-        portLabel.font = uiFont.withSize(11)
-        portLabel.textColor = creamColor.withAlphaComponent(0.8)
-        portLabel.backgroundColor = .clear
-        portLabel.isBordered = false
-        portLabel.isEditable = false
-        portLabel.frame = NSRect(x: 20, y: 19, width: cellWidth - 60, height: 14)
-        cell.addSubview(portLabel)
+        // Status dot — sits in the same x slot as the project terminal icon so it
+        // remains visible inside the 40pt collapsed rail.
+        let dotSize: CGFloat = 8
+        let dot = StatusDotView(diameter: dotSize, color: Theme.statusRunningColor)
+        dot.frame = NSRect(
+            x: 20 + (16 - dotSize) / 2,
+            y: (rowHeight - dotSize) / 2,
+            width: dotSize,
+            height: dotSize
+        )
+        cell.addSubview(dot)
 
-        let subtitleText: String
-        if let name = item.projectName {
-            subtitleText = "\(name) · \(item.server.friendlyName)"
-        } else {
-            subtitleText = item.server.friendlyName
-        }
-        let subtitleLabel = NSTextField(labelWithString: subtitleText)
-        subtitleLabel.font = uiFont.withSize(9)
-        subtitleLabel.textColor = creamColor.withAlphaComponent(0.4)
-        subtitleLabel.backgroundColor = .clear
-        subtitleLabel.isBordered = false
-        subtitleLabel.isEditable = false
-        subtitleLabel.lineBreakMode = .byTruncatingTail
-        subtitleLabel.frame = NSRect(x: 20, y: 4, width: cellWidth - 60, height: 13)
-        cell.addSubview(subtitleLabel)
+        let prefix = item.projectName ?? ""
+        let titleText = prefix.isEmpty ? ":\(item.server.port)" : "\(prefix):\(item.server.port)"
+        let titleLabel = NSTextField(labelWithString: titleText)
+        titleLabel.tag = 101
+        titleLabel.font = uiFont.withSize(13)
+        titleLabel.textColor = creamColor.withAlphaComponent(0.8)
+        titleLabel.backgroundColor = .clear
+        titleLabel.isBordered = false
+        titleLabel.isEditable = false
+        titleLabel.lineBreakMode = .byTruncatingTail
+        titleLabel.sizeToFit()
+        let titleHeight = titleLabel.frame.height
+        titleLabel.frame = NSRect(
+            x: 42,
+            y: (rowHeight - titleHeight) / 2,
+            width: max(0, cellWidth - 84),
+            height: titleHeight
+        )
+        cell.addSubview(titleLabel)
 
+        let buttonY = (rowHeight - 16) / 2
         let safariBtn = ServerIconButton(svgName: "safari-solid-sharp.svg", port: item.server.port, browser: .safari)
-        safariBtn.frame = NSRect(x: cellWidth - 48, y: 10, width: 16, height: 16)
+        safariBtn.frame = NSRect(x: cellWidth - 48, y: buttonY, width: 16, height: 16)
         cell.addSubview(safariBtn)
 
         let chromeBtn = ServerIconButton(svgName: "chrome-solid-sharp.svg", port: item.server.port, browser: .chrome)
-        chromeBtn.frame = NSRect(x: cellWidth - 26, y: 10, width: 16, height: 16)
+        chromeBtn.frame = NSRect(x: cellWidth - 26, y: buttonY, width: 16, height: 16)
         cell.addSubview(chromeBtn)
 
         return cell
@@ -1097,21 +1165,14 @@ enum BrowserTarget {
     case safari, chrome
 }
 
-class ServerIconButton: NSButton {
+class ServerIconButton: HoverIconButton {
     let port: Int
     let browser: BrowserTarget
 
     init(svgName: String, port: Int, browser: BrowserTarget) {
         self.port = port
         self.browser = browser
-        super.init(frame: .zero)
-
-        isBordered = false
-        bezelStyle = .inline
-        if let img = loadSVGIcon(named: svgName, size: 16, tint: creamColor, alpha: 0.5) {
-            image = img
-        }
-        imageScaling = .scaleProportionallyUpOrDown
+        super.init(svgName: svgName, iconSize: 16, baseAlpha: 0.5, hoverAlpha: 1.0)
         target = self
         action = #selector(openInBrowser)
     }
@@ -1310,6 +1371,18 @@ class MainLayoutView: NSView {
     override func resizeSubviews(withOldSize oldSize: NSSize) {
         super.resizeSubviews(withOldSize: oldSize)
         layoutSubviews()
+    }
+
+    /// `applyLayout` reads `titlebarSafeInset` from `window.contentLayoutRect`, but
+    /// at `init` time we're not in a window yet — `window` is nil and the inset
+    /// returns 0, so the column headers end up flush with the very top of the
+    /// content view (right under the traffic lights). Re-running the layout once
+    /// the view is attached to a window picks up the real inset.
+    override func viewDidMoveToWindow() {
+        super.viewDidMoveToWindow()
+        if window != nil {
+            layoutSubviews()
+        }
     }
 
     func toggleSidebar() {
