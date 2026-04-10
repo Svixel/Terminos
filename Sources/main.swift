@@ -562,7 +562,9 @@ final class HeaderBar: NSView {
 
         if let iconView = narrowIconView {
             iconView.isHidden = !isNarrow
-            let size: CGFloat = 14
+            // Match the trailing-button footprint so the narrow :SERVERS glyph
+            // reads at the same visual size as the /CODE collapse toggle.
+            let size = Theme.headerButtonSize
             iconView.frame = NSRect(
                 x: (bounds.width - size) / 2,
                 y: (bounds.height - size) / 2,
@@ -697,13 +699,18 @@ class HoverRowView: NSTableRowView {
     override func updateTrackingAreas() {
         super.updateTrackingAreas()
         if let existing = trackingArea { removeTrackingArea(existing) }
-        trackingArea = NSTrackingArea(
-            rect: bounds,
-            options: [.mouseEnteredAndExited, .activeInKeyWindow],
+        // `.inVisibleRect` keeps the tracking area in sync when the row scrolls,
+        // when the sidebar resizes, and when AppKit reuses rows. Without it the
+        // hover state "locks" on the last-hovered row until you wiggle the mouse
+        // back into a live rect.
+        let area = NSTrackingArea(
+            rect: .zero,
+            options: [.mouseEnteredAndExited, .activeInKeyWindow, .inVisibleRect],
             owner: self,
             userInfo: nil
         )
-        addTrackingArea(trackingArea!)
+        addTrackingArea(area)
+        trackingArea = area
     }
 
     override func mouseEntered(with event: NSEvent) {
@@ -762,6 +769,10 @@ class ProjectSidebarView: NSView {
     private var runningServers: [(server: ServerInfo, projectName: String?)] = []
     /// Floor for the bottom :SERVERS section. The section is responsive above this.
     private let serverSectionMinHeight: CGFloat = 280
+    /// True when the sidebar is showing as a 40pt rail. Cell builders check this
+    /// so they render a centered status dot instead of the full row content.
+    /// Kept in sync by `setContentVisible` from `MainLayoutView`.
+    private var isCollapsedRail = false
 
     override init(frame: NSRect) {
         header = HeaderBar(title: "/CODE")
@@ -826,11 +837,52 @@ class ProjectSidebarView: NSView {
         onMouseExit?()
     }
 
-    /// Hook for `MainLayoutView` to notify the sidebar of collapse changes. Both
-    /// project rows and server rows stay visible in rail mode — the rail simply
-    /// clips them down to their leading glyphs (terminal icons / status dots).
-    /// No fades needed today, so this is a no-op kept for future use.
-    func setContentVisible(_ visible: Bool, animated: Bool) {}
+    /// Hook for `MainLayoutView` to notify the sidebar of collapse changes. In
+    /// rail mode we fade the project list to zero and swap the server rows down
+    /// to a single centered status dot. The /CODE header (with its toggle) and
+    /// the :SERVERS header (narrow mode: centered MCP icon + bottom divider)
+    /// stay visible so the rail still reads as two sections.
+    func setContentVisible(_ visible: Bool, animated: Bool) {
+        let newCollapsed = !visible
+        guard isCollapsedRail != newCollapsed else { return }
+        isCollapsedRail = newCollapsed
+
+        // Un-hide BEFORE fade-in so the animation runs on a visible layer.
+        // Fade-out hides AFTER the animation completes (below).
+        if visible {
+            scrollView.isHidden = false
+        }
+
+        // Entering rail: reload now so cells immediately draw the centered dot.
+        // Cells use `collapsedSidebarWidth` (not `bounds.width`) for positioning,
+        // so reloading before the frame animation finishes is safe.
+        if !visible {
+            serversTableView.reloadData()
+        }
+
+        let targetAlpha: CGFloat = visible ? 1.0 : 0.0
+
+        let finalize: () -> Void = { [weak self] in
+            guard let self = self else { return }
+            if visible {
+                // Leaving rail: rebuild cells with the full layout.
+                self.serversTableView.reloadData()
+            } else {
+                self.scrollView.isHidden = true
+            }
+        }
+
+        if animated {
+            NSAnimationContext.runAnimationGroup({ ctx in
+                ctx.duration = 0.2
+                ctx.timingFunction = CAMediaTimingFunction(name: .easeInEaseOut)
+                scrollView.animator().alphaValue = targetAlpha
+            }, completionHandler: finalize)
+        } else {
+            scrollView.alphaValue = targetAlpha
+            finalize()
+        }
+    }
 
     /// Refresh the bottom :SERVERS section. Each server is paired with the name
     /// of the project its working directory lives inside.
@@ -1072,7 +1124,9 @@ extension ProjectSidebarView: NSTableViewDataSource, NSTableViewDelegate {
 
     /// Server row in the bottom :SERVERS section. Layout matches the project rows:
     /// leading status dot at x=24 (centered on the project icon column), title at
-    /// x=42 (same as project names), Safari/Chrome buttons trailing.
+    /// x=42 (same as project names), Safari/Chrome buttons trailing. In rail mode
+    /// (`isCollapsedRail`) only a single status dot is rendered, centered in the
+    /// 40pt rail.
     private func makeServerCell(row: Int) -> NSView {
         let cellID = NSUserInterfaceItemIdentifier("LeftServerCell")
         let cell = serversTableView.makeView(withIdentifier: cellID, owner: nil) as? NSTableCellView
@@ -1081,12 +1135,30 @@ extension ProjectSidebarView: NSTableViewDataSource, NSTableViewDelegate {
         cell.subviews.forEach { $0.removeFromSuperview() }
 
         let item = runningServers[row]
-        let cellWidth = bounds.width
         let rowHeight: CGFloat = 32
-
-        // Status dot — sits in the same x slot as the project terminal icon so it
-        // remains visible inside the 40pt collapsed rail.
         let dotSize: CGFloat = 8
+
+        if isCollapsedRail {
+            // Rail: only the centered status dot. Hardcode against
+            // `collapsedSidebarWidth` because `bounds.width` may still hold the
+            // expanded width while the frame animation is in flight.
+            let dot = StatusDotView(diameter: dotSize, color: Theme.statusRunningColor)
+            dot.frame = NSRect(
+                x: (collapsedSidebarWidth - dotSize) / 2,
+                y: (rowHeight - dotSize) / 2,
+                width: dotSize,
+                height: dotSize
+            )
+            cell.addSubview(dot)
+            return cell
+        }
+
+        // Full layout. Use `sidebarWidth` instead of `bounds.width` so peek-in
+        // reloads build cells with the final expanded width, not the rail width
+        // that's still in place while the frame animation runs.
+        let cellWidth = sidebarWidth
+
+        // Status dot — sits in the same x slot as the project terminal icon.
         let dot = StatusDotView(diameter: dotSize, color: Theme.statusRunningColor)
         dot.frame = NSRect(
             x: 20 + (16 - dotSize) / 2,
