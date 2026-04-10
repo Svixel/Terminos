@@ -10,7 +10,6 @@ let sidebarWidth: CGFloat = 220
 /// area becomes a 1:1 square — toggle button on top, terminal-icon column under it.
 let collapsedSidebarWidth: CGFloat = 40
 let serverPanelWidth: CGFloat = 180
-private let commandLineUnicode: UInt32 = 988747 // HugeIcons command-line solid-rounded
 let projectsPath = FileManager.default.homeDirectoryForCurrentUser
     .appendingPathComponent("Documents/CODE").path
 

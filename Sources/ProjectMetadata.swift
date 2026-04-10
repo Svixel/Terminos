@@ -58,9 +58,6 @@ func hugeIconString(_ unicode: UInt32, size: CGFloat, alpha: CGFloat = 0.4) -> N
 
 // MARK: - Git status
 
-private let githubUnicode: UInt32 = 989462
-private let gitBranchUnicode: UInt32 = 989452
-
 enum GitStatus {
     case none, gitOnly, github
 }
