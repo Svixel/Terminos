@@ -72,40 +72,22 @@ class ServerPanelView: NSView {
     private(set) var servers: [ServerInfo] = []
 
     override init(frame: NSRect) {
-        scrollView = NSScrollView(frame: .zero)
-        tableView = NSTableView(frame: .zero)
+        (scrollView, tableView) = makeSidebarTable(rowHeight: Theme.rowHeight)
         header = HeaderBar(title: "/SERVERS")
 
         super.init(frame: frame)
         wantsLayer = true
         layer?.backgroundColor = bgColor.cgColor
 
-        setupTableView()
+        tableView.delegate = self
+        tableView.dataSource = self
+
         addSubview(header)
         addSubview(scrollView)
     }
 
     @available(*, unavailable)
     required init?(coder: NSCoder) { fatalError() }
-
-    private func setupTableView() {
-        let column = NSTableColumn(identifier: NSUserInterfaceItemIdentifier("server"))
-        column.width = frame.width
-        tableView.addTableColumn(column)
-        tableView.headerView = nil
-        tableView.backgroundColor = .clear
-        tableView.rowHeight = 28
-        tableView.intercellSpacing = NSSize(width: 0, height: 0)
-        tableView.selectionHighlightStyle = .none
-        tableView.style = .plain
-        tableView.delegate = self
-        tableView.dataSource = self
-
-        scrollView.documentView = tableView
-        scrollView.hasVerticalScroller = false
-        scrollView.hasHorizontalScroller = false
-        scrollView.drawsBackground = false
-    }
 
     func update(servers: [ServerInfo]) {
         self.servers = servers
@@ -135,20 +117,12 @@ extension ServerPanelView: NSTableViewDataSource, NSTableViewDelegate {
         let cellWidth = bounds.width
 
         // Port label
-        let portLabel = NSTextField(labelWithString: ":\(server.port)")
-        portLabel.font = uiFont.withSize(11)
-        portLabel.textColor = Theme.strongLabelColor
-        portLabel.isBordered = false
-        portLabel.isEditable = false
+        let portLabel = makeLabel(":\(server.port)", fontSize: 11, color: Theme.strongLabelColor)
         portLabel.frame = NSRect(x: 10, y: 18, width: cellWidth - 60, height: 14)
         cell.addSubview(portLabel)
 
         // Friendly name
-        let nameLabel = NSTextField(labelWithString: server.friendlyName)
-        nameLabel.font = uiFont.withSize(9)
-        nameLabel.textColor = Theme.ghostLabelColor
-        nameLabel.isBordered = false
-        nameLabel.isEditable = false
+        let nameLabel = makeLabel(server.friendlyName, fontSize: 9, color: Theme.ghostLabelColor)
         nameLabel.frame = NSRect(x: 10, y: 4, width: cellWidth - 60, height: 14)
         cell.addSubview(nameLabel)
 
@@ -196,9 +170,7 @@ class MainLayoutView: NSView {
         terminalContainer = TerminalContainerView(frame: .zero)
         serverPanel = ServerPanelView(frame: .zero)
 
-        emptyLabel = NSTextField(labelWithString: "Select a project to begin")
-        emptyLabel.font = uiFont.withSize(14)
-        emptyLabel.textColor = Theme.subtleLabelColor
+        emptyLabel = makeLabel("Select a project to begin", fontSize: 14, color: Theme.subtleLabelColor)
         emptyLabel.alignment = .center
 
         verticalDivider = NSView()

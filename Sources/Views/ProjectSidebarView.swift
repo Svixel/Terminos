@@ -48,13 +48,11 @@ class ProjectSidebarView: NSView {
             hoverAlpha: 1.0
         )
 
-        scrollView = NSScrollView(frame: .zero)
-        tableView = NSTableView(frame: scrollView.bounds)
+        (scrollView, tableView) = makeSidebarTable(rowHeight: Theme.rowHeight)
 
         let serverIcon = loadSVGIcon(named: "mcp-server-solid-sharp.svg", size: 14, alpha: 0.6)
         serversHeader = HeaderBar(title: ":SERVERS", narrowIcon: serverIcon)
-        serversScrollView = NSScrollView(frame: .zero)
-        serversTableView = NSTableView(frame: .zero)
+        (serversScrollView, serversTableView) = makeSidebarTable(rowHeight: Theme.serverRowHeight)
         serversTopDivider = DividerView(frame: .zero)
 
         super.init(frame: frame)
@@ -82,15 +80,7 @@ class ProjectSidebarView: NSView {
 
     override func updateTrackingAreas() {
         super.updateTrackingAreas()
-        if let existing = hoverTrackingArea { removeTrackingArea(existing) }
-        let area = NSTrackingArea(
-            rect: bounds,
-            options: [.mouseEnteredAndExited, .activeInKeyWindow, .inVisibleRect],
-            owner: self,
-            userInfo: nil
-        )
-        addTrackingArea(area)
-        hoverTrackingArea = area
+        hoverTrackingArea = installHoverTrackingArea(replacing: hoverTrackingArea)
     }
 
     override func mouseEntered(with event: NSEvent) {
@@ -191,26 +181,13 @@ class ProjectSidebarView: NSView {
     }
 
     private func setupTableView() {
-        let column = NSTableColumn(identifier: NSUserInterfaceItemIdentifier("project"))
-        column.width = frame.width
-        tableView.addTableColumn(column)
-        tableView.headerView = nil
-        tableView.backgroundColor = .clear
-        tableView.rowHeight = Theme.rowHeight
-        tableView.intercellSpacing = NSSize(width: 0, height: 0)
-        tableView.selectionHighlightStyle = .none
-        // .plain disables AppKit's automatic leading inset so the cell's own x=20
-        // padding is the only source of left space.
-        tableView.style = .plain
+        // .plain disables AppKit's automatic leading inset so the cell's own
+        // x=Theme.cellLeading padding is the only source of left space.
         tableView.delegate = self
         tableView.dataSource = self
         tableView.action = #selector(projectRowClicked)
         tableView.target = self
 
-        scrollView.documentView = tableView
-        scrollView.hasVerticalScroller = false
-        scrollView.hasHorizontalScroller = false
-        scrollView.drawsBackground = false
         scrollView.automaticallyAdjustsContentInsets = false
         scrollView.contentInsets = NSEdgeInsets(top: 0, left: 0, bottom: 0, right: 0)
         scrollView.autoresizingMask = [.width, .height]
@@ -219,22 +196,9 @@ class ProjectSidebarView: NSView {
     }
 
     private func setupServersTableView() {
-        let column = NSTableColumn(identifier: NSUserInterfaceItemIdentifier("server"))
-        column.width = frame.width
-        serversTableView.addTableColumn(column)
-        serversTableView.headerView = nil
-        serversTableView.backgroundColor = .clear
-        serversTableView.rowHeight = Theme.serverRowHeight
-        serversTableView.intercellSpacing = NSSize(width: 0, height: 0)
-        serversTableView.selectionHighlightStyle = .none
-        serversTableView.style = .plain
         serversTableView.delegate = self
         serversTableView.dataSource = self
 
-        serversScrollView.documentView = serversTableView
-        serversScrollView.hasVerticalScroller = false
-        serversScrollView.hasHorizontalScroller = false
-        serversScrollView.drawsBackground = false
         serversScrollView.automaticallyAdjustsContentInsets = false
 
         addSubview(serversScrollView)
@@ -346,13 +310,8 @@ extension ProjectSidebarView: NSTableViewDataSource, NSTableViewDelegate {
         iconView.tag = 100
         cell.addSubview(iconView)
 
-        let nameLabel = NSTextField(labelWithString: project.name)
+        let nameLabel = makeLabel(project.name, fontSize: 12, color: Theme.mutedLabelColor)
         nameLabel.tag = 101
-        nameLabel.font = uiFont.withSize(12)
-        nameLabel.textColor = Theme.mutedLabelColor
-        nameLabel.backgroundColor = .clear
-        nameLabel.isBordered = false
-        nameLabel.isEditable = false
         nameLabel.lineBreakMode = .byTruncatingTail
         nameLabel.sizeToFit()
         let nameHeight = nameLabel.frame.height
@@ -439,13 +398,8 @@ extension ProjectSidebarView: NSTableViewDataSource, NSTableViewDelegate {
 
         let prefix = item.projectName ?? ""
         let titleText = prefix.isEmpty ? ":\(item.server.port)" : "\(prefix):\(item.server.port)"
-        let titleLabel = NSTextField(labelWithString: titleText)
+        let titleLabel = makeLabel(titleText, fontSize: 13, color: Theme.strongLabelColor)
         titleLabel.tag = 101
-        titleLabel.font = uiFont.withSize(13)
-        titleLabel.textColor = Theme.strongLabelColor
-        titleLabel.backgroundColor = .clear
-        titleLabel.isBordered = false
-        titleLabel.isEditable = false
         titleLabel.lineBreakMode = .byTruncatingTail
         titleLabel.sizeToFit()
         let titleHeight = titleLabel.frame.height

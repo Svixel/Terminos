@@ -223,19 +223,7 @@ class HoverRowView: NSTableRowView {
 
     override func updateTrackingAreas() {
         super.updateTrackingAreas()
-        if let existing = trackingArea { removeTrackingArea(existing) }
-        // `.inVisibleRect` keeps the tracking area in sync when the row scrolls,
-        // when the sidebar resizes, and when AppKit reuses rows. Without it the
-        // hover state "locks" on the last-hovered row until you wiggle the mouse
-        // back into a live rect.
-        let area = NSTrackingArea(
-            rect: .zero,
-            options: [.mouseEnteredAndExited, .activeInKeyWindow, .inVisibleRect],
-            owner: self,
-            userInfo: nil
-        )
-        addTrackingArea(area)
-        trackingArea = area
+        trackingArea = installHoverTrackingArea(replacing: trackingArea)
     }
 
     override func mouseEntered(with event: NSEvent) {
