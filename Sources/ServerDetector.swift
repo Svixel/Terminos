@@ -42,11 +42,40 @@ class ServerDetector {
         timer = nil
     }
 
+    /// Each scan composes three phases (listen → args → cwd) into a `[ServerInfo]`,
+    /// dispatches the result to the main thread when it differs from the last
+    /// scan, and skips the main-thread hop when nothing changed.
     private func scan() {
+        let listings = fetchListeningPorts()
+        let pids = Set(listings.map(\.pid))
+        let pidArgs = fetchProcessArgs(pids: pids)
+        let pidCwds = fetchProcessCwds(pids: pids)
+
+        let servers = listings.map { entry in
+            ServerInfo(
+                port: entry.port,
+                pid: entry.pid,
+                processName: entry.processName,
+                friendlyName: identifyFramework(processName: entry.processName, args: pidArgs[entry.pid] ?? ""),
+                cwd: pidCwds[entry.pid]
+            )
+        }.sorted { $0.port < $1.port }
+
+        if servers != lastServers {
+            lastServers = servers
+            DispatchQueue.main.async { [weak self] in
+                self?.onServersChanged?(servers)
+            }
+        }
+    }
+
+    /// Phase 1: list every listening TCP port via `lsof -iTCP -sTCP:LISTEN`,
+    /// dropping system processes, ports below 1024, and duplicates.
+    private func fetchListeningPorts() -> [(pid: Int32, processName: String, port: Int)] {
         let lsofOutput = runCommand("/usr/sbin/lsof", args: ["-iTCP", "-sTCP:LISTEN", "-n", "-P"])
 
         var seenPorts = Set<Int>()
-        var rawEntries: [(pid: Int32, processName: String, port: Int)] = []
+        var entries: [(pid: Int32, processName: String, port: Int)] = []
 
         for line in lsofOutput.split(separator: "\n").dropFirst() {
             let cols = line.split(separator: " ", omittingEmptySubsequences: true)
@@ -65,51 +94,44 @@ class ServerDetector {
 
             guard !seenPorts.contains(port) else { continue }
             seenPorts.insert(port)
-            rawEntries.append((pid, processName, port))
+            entries.append((pid, processName, port))
         }
 
-        var pidArgs: [Int32: String] = [:]
-        for pid in Set(rawEntries.map(\.pid)) {
-            pidArgs[pid] = runCommand("/bin/ps", args: ["-p", "\(pid)", "-o", "args="]).trimmingCharacters(in: .whitespacesAndNewlines)
-        }
+        return entries
+    }
 
-        // Batch cwd lookup: one lsof call for every PID we care about. The -Fn output
-        // groups fields by process record (lines starting with `p`), followed by a
-        // single `fcwd` descriptor and its `n` (path) field.
-        var pidCwds: [Int32: String] = [:]
-        let uniquePids = Set(rawEntries.map(\.pid))
-        if !uniquePids.isEmpty {
-            let pidsArg = uniquePids.map(String.init).joined(separator: ",")
-            let cwdOutput = runCommand("/usr/sbin/lsof", args: ["-a", "-d", "cwd", "-Fn", "-p", pidsArg])
-            var currentPid: Int32?
-            for line in cwdOutput.split(separator: "\n") {
-                let s = String(line)
-                if s.hasPrefix("p") {
-                    currentPid = Int32(s.dropFirst())
-                } else if s.hasPrefix("n"), let pid = currentPid {
-                    pidCwds[pid] = String(s.dropFirst())
-                }
+    /// Phase 2: per-PID `ps -p ... -o args=` lookup so the framework heuristic
+    /// can pattern-match on argv (e.g. "next dev", "vite", "manage.py runserver").
+    private func fetchProcessArgs(pids: Set<Int32>) -> [Int32: String] {
+        var result: [Int32: String] = [:]
+        for pid in pids {
+            result[pid] = runCommand("/bin/ps", args: ["-p", "\(pid)", "-o", "args="])
+                .trimmingCharacters(in: .whitespacesAndNewlines)
+        }
+        return result
+    }
+
+    /// Phase 3: batched `lsof -a -d cwd -Fn -p ...` to resolve each PID's
+    /// working directory. The `-Fn` output groups fields by process record:
+    /// lines starting with `p` switch context, then a single `fcwd` descriptor
+    /// and its `n` (path) field. Returns an empty map if no PIDs were given.
+    private func fetchProcessCwds(pids: Set<Int32>) -> [Int32: String] {
+        guard !pids.isEmpty else { return [:] }
+
+        let pidsArg = pids.map(String.init).joined(separator: ",")
+        let cwdOutput = runCommand("/usr/sbin/lsof", args: ["-a", "-d", "cwd", "-Fn", "-p", pidsArg])
+
+        var result: [Int32: String] = [:]
+        var currentPid: Int32?
+        for line in cwdOutput.split(separator: "\n") {
+            let s = String(line)
+            if s.hasPrefix("p") {
+                currentPid = Int32(s.dropFirst())
+            } else if s.hasPrefix("n"), let pid = currentPid {
+                result[pid] = String(s.dropFirst())
             }
         }
-
-        let servers = rawEntries.map { entry -> ServerInfo in
-            let args = pidArgs[entry.pid] ?? ""
-            let friendly = identifyFramework(processName: entry.processName, args: args)
-            return ServerInfo(
-                port: entry.port,
-                pid: entry.pid,
-                processName: entry.processName,
-                friendlyName: friendly,
-                cwd: pidCwds[entry.pid]
-            )
-        }.sorted { $0.port < $1.port }
-
-        if servers != lastServers {
-            lastServers = servers
-            DispatchQueue.main.async { [weak self] in
-                self?.onServersChanged?(servers)
-            }
-        }
+        return result
     }
 
     private func identifyFramework(processName: String, args: String) -> String {

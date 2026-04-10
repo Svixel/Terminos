@@ -145,6 +145,50 @@ extension ServerPanelView: NSTableViewDataSource, NSTableViewDelegate {
     }
 }
 
+// MARK: - Window Layout
+
+/// Pure layout calculation for `MainLayoutView`. Reads zero instance state, so
+/// the math is trivially eyeballable. `MainLayoutView.applyLayout` builds one
+/// of these per pass and copies the rects out (animated or direct) onto the
+/// matching subviews.
+struct WindowLayout {
+    let sidebar: NSRect
+    let verticalDivider: NSRect
+    let tabBar: NSRect
+    let horizontalDivider: NSRect
+    let terminal: NSRect
+    let serverPanel: NSRect
+    let serverDivider: NSRect
+    let titlebarDivider: NSRect
+    let emptyLabel: NSRect
+    /// True when the window is fullscreen and the titlebar hairline should hide.
+    let titlebarHidden: Bool
+
+    init(bounds: NSRect, topInset: CGFloat, sidebarCollapsed: Bool, isPeeking: Bool, emptyLabelSize: NSSize) {
+        let usableHeight = bounds.height - topInset
+        let effectiveSidebarWidth: CGFloat = (sidebarCollapsed && !isPeeking) ? collapsedSidebarWidth : sidebarWidth
+        let rightX = effectiveSidebarWidth
+        let contentWidth = bounds.width - effectiveSidebarWidth - serverPanelWidth
+        let panelX = bounds.width - serverPanelWidth
+
+        sidebar = NSRect(x: 0, y: 0, width: effectiveSidebarWidth, height: usableHeight)
+        verticalDivider = NSRect(x: effectiveSidebarWidth, y: 0, width: 1, height: usableHeight)
+        tabBar = NSRect(x: rightX, y: usableHeight - Theme.headerHeight, width: contentWidth, height: Theme.headerHeight)
+        horizontalDivider = NSRect(x: rightX, y: usableHeight - Theme.headerHeight, width: contentWidth, height: 1)
+        terminal = NSRect(x: rightX, y: 0, width: contentWidth, height: usableHeight - Theme.headerHeight)
+        serverPanel = NSRect(x: panelX, y: 0, width: serverPanelWidth, height: usableHeight)
+        serverDivider = NSRect(x: panelX, y: 0, width: 1, height: usableHeight)
+        titlebarDivider = NSRect(x: 0, y: usableHeight, width: bounds.width, height: 1)
+        emptyLabel = NSRect(
+            x: rightX + (contentWidth - emptyLabelSize.width) / 2,
+            y: (usableHeight - emptyLabelSize.height) / 2,
+            width: emptyLabelSize.width,
+            height: emptyLabelSize.height
+        )
+        titlebarHidden = topInset <= 0
+    }
+}
+
 // MARK: - Main Layout View
 
 class MainLayoutView: NSView {
@@ -268,58 +312,35 @@ class MainLayoutView: NSView {
     }
 
     private func applyLayout(animated: Bool) {
-        let topInset = titlebarSafeInset
-        let usableHeight = bounds.height - topInset
-        let effectiveSidebarWidth: CGFloat = (sidebarCollapsed && !isPeeking) ? collapsedSidebarWidth : sidebarWidth
-        let sw: CGFloat = effectiveSidebarWidth
-        let rightX = sw
-        let contentWidth = bounds.width - sw - serverPanelWidth
-        let panelX = bounds.width - serverPanelWidth
-
-        let sidebarTarget = NSRect(x: 0, y: 0, width: effectiveSidebarWidth, height: usableHeight)
-        let dividerTarget = NSRect(x: sw, y: 0, width: 1, height: usableHeight)
-        let tabTarget = NSRect(x: rightX, y: usableHeight - Theme.headerHeight, width: contentWidth, height: Theme.headerHeight)
-        let hDivTarget = NSRect(x: rightX, y: usableHeight - Theme.headerHeight, width: contentWidth, height: 1)
-        let termTarget = NSRect(x: rightX, y: 0, width: contentWidth, height: usableHeight - Theme.headerHeight)
-        let panelTarget = NSRect(x: panelX, y: 0, width: serverPanelWidth, height: usableHeight)
-        let sDivTarget = NSRect(x: panelX, y: 0, width: 1, height: usableHeight)
-        let titlebarDivTarget = NSRect(x: 0, y: usableHeight, width: bounds.width, height: 1)
-        let labelSize = emptyLabel.intrinsicContentSize
-        let labelTarget = NSRect(
-            x: rightX + (contentWidth - labelSize.width) / 2,
-            y: (usableHeight - labelSize.height) / 2,
-            width: labelSize.width,
-            height: labelSize.height
+        let layout = WindowLayout(
+            bounds: bounds,
+            topInset: titlebarSafeInset,
+            sidebarCollapsed: sidebarCollapsed,
+            isPeeking: isPeeking,
+            emptyLabelSize: emptyLabel.intrinsicContentSize
         )
 
-        titlebarDivider.isHidden = topInset <= 0
+        titlebarDivider.isHidden = layout.titlebarHidden
 
         // Hide the project list in rail mode (collapsed, not peeking). Stays in sync
         // with the sidebar width animation.
-        let contentVisible = !(sidebarCollapsed && !isPeeking)
-        sidebar.setContentVisible(contentVisible, animated: animated)
+        sidebar.setContentVisible(!(sidebarCollapsed && !isPeeking), animated: animated)
 
-        if animated {
-            sidebar.animator().frame = sidebarTarget
-            verticalDivider.animator().frame = dividerTarget
-            tabBar.animator().frame = tabTarget
-            horizontalDivider.animator().frame = hDivTarget
-            terminalContainer.animator().frame = termTarget
-            serverPanel.animator().frame = panelTarget
-            serverDivider.animator().frame = sDivTarget
-            titlebarDivider.animator().frame = titlebarDivTarget
-            emptyLabel.animator().frame = labelTarget
-        } else {
-            sidebar.frame = sidebarTarget
-            verticalDivider.frame = dividerTarget
-            tabBar.frame = tabTarget
-            horizontalDivider.frame = hDivTarget
-            terminalContainer.frame = termTarget
-            serverPanel.frame = panelTarget
-            serverDivider.frame = sDivTarget
-            titlebarDivider.frame = titlebarDivTarget
-            emptyLabel.frame = labelTarget
-        }
+        // Pull the assignment closure out so the eight frame writes don't repeat
+        // the animator/direct branch each time.
+        let assign: (NSView, NSRect) -> Void = animated
+            ? { $0.animator().frame = $1 }
+            : { $0.frame = $1 }
+
+        assign(sidebar, layout.sidebar)
+        assign(verticalDivider, layout.verticalDivider)
+        assign(tabBar, layout.tabBar)
+        assign(horizontalDivider, layout.horizontalDivider)
+        assign(terminalContainer, layout.terminal)
+        assign(serverPanel, layout.serverPanel)
+        assign(serverDivider, layout.serverDivider)
+        assign(titlebarDivider, layout.titlebarDivider)
+        assign(emptyLabel, layout.emptyLabel)
     }
 
     func setEmptyState(_ empty: Bool) {
