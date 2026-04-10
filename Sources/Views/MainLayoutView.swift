@@ -137,7 +137,7 @@ extension ServerPanelView: NSTableViewDataSource, NSTableViewDelegate {
         // Port label
         let portLabel = NSTextField(labelWithString: ":\(server.port)")
         portLabel.font = uiFont.withSize(11)
-        portLabel.textColor = creamColor.withAlphaComponent(0.8)
+        portLabel.textColor = Theme.strongLabelColor
         portLabel.isBordered = false
         portLabel.isEditable = false
         portLabel.frame = NSRect(x: 10, y: 18, width: cellWidth - 60, height: 14)
@@ -146,7 +146,7 @@ extension ServerPanelView: NSTableViewDataSource, NSTableViewDelegate {
         // Friendly name
         let nameLabel = NSTextField(labelWithString: server.friendlyName)
         nameLabel.font = uiFont.withSize(9)
-        nameLabel.textColor = creamColor.withAlphaComponent(0.4)
+        nameLabel.textColor = Theme.ghostLabelColor
         nameLabel.isBordered = false
         nameLabel.isEditable = false
         nameLabel.frame = NSRect(x: 10, y: 4, width: cellWidth - 60, height: 14)
@@ -198,20 +198,20 @@ class MainLayoutView: NSView {
 
         emptyLabel = NSTextField(labelWithString: "Select a project to begin")
         emptyLabel.font = uiFont.withSize(14)
-        emptyLabel.textColor = creamColor.withAlphaComponent(0.3)
+        emptyLabel.textColor = Theme.subtleLabelColor
         emptyLabel.alignment = .center
 
         verticalDivider = NSView()
         verticalDivider.wantsLayer = true
-        verticalDivider.layer?.backgroundColor = creamColor.withAlphaComponent(0.08).cgColor
+        verticalDivider.layer?.backgroundColor = Theme.dividerCGColor
 
         serverDivider = NSView()
         serverDivider.wantsLayer = true
-        serverDivider.layer?.backgroundColor = creamColor.withAlphaComponent(0.08).cgColor
+        serverDivider.layer?.backgroundColor = Theme.dividerCGColor
 
         horizontalDivider = NSView()
         horizontalDivider.wantsLayer = true
-        horizontalDivider.layer?.backgroundColor = creamColor.withAlphaComponent(0.08).cgColor
+        horizontalDivider.layer?.backgroundColor = Theme.dividerCGColor
 
         titlebarDivider = DividerView(frame: .zero)
 
@@ -260,7 +260,7 @@ class MainLayoutView: NSView {
         sidebarCollapsed.toggle()
         isPeeking = false
         NSAnimationContext.runAnimationGroup { ctx in
-            ctx.duration = 0.2
+            ctx.duration = Theme.sidebarAnim
             ctx.timingFunction = CAMediaTimingFunction(name: .easeInEaseOut)
             applyLayout(animated: true)
         }
@@ -274,7 +274,7 @@ class MainLayoutView: NSView {
         guard isPeeking != peeking else { return }
         isPeeking = peeking
         NSAnimationContext.runAnimationGroup { ctx in
-            ctx.duration = 0.15
+            ctx.duration = Theme.peekAnim
             ctx.timingFunction = CAMediaTimingFunction(name: .easeInEaseOut)
             applyLayout(animated: true)
         }

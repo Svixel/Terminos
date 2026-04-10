@@ -16,6 +16,8 @@ let projectsPath = FileManager.default.homeDirectoryForCurrentUser
 
 /// Centralized design tokens. New components should read from here instead of hard-coding values.
 enum Theme {
+    // MARK: Layout
+
     /// Uniform height for every top-strip header (sidebar, tab area, server panel).
     static let headerHeight: CGFloat = 40
     /// Default left/right padding inside a header.
@@ -24,9 +26,34 @@ enum Theme {
     static let headerButtonSize: CGFloat = 18
     static let headerFontSize: CGFloat = 12
     static let rowHeight: CGFloat = 28
+    /// Row height for the :SERVERS section in the sidebar.
+    static let serverRowHeight: CGFloat = 32
 
-    static var dividerCGColor: CGColor { creamColor.withAlphaComponent(0.08).cgColor }
+    /// Left padding for the leading icon column in sidebar cells.
+    static let cellLeading: CGFloat = 20
+    /// Left padding for the primary text column in sidebar cells (sits one icon
+    /// width + gap to the right of `cellLeading`).
+    static let cellTextLeading: CGFloat = 42
+    /// Horizontal stride between trailing icons in a sidebar cell.
+    static let cellIconStride: CGFloat = 14
+
+    // MARK: Animation
+
+    /// Sidebar collapse/expand toggle duration.
+    static let sidebarAnim: TimeInterval = 0.2
+    /// Peek-on-hover expand/contract duration. Slightly faster than `sidebarAnim`
+    /// so the rail "peeks" feel responsive vs deliberate.
+    static let peekAnim: TimeInterval = 0.15
+
+    // MARK: Color
+
+    static var dividerColor: NSColor { creamColor.withAlphaComponent(0.08) }
+    static var dividerCGColor: CGColor { dividerColor.cgColor }
+    /// Strongest secondary text. Used for primary row titles like server addresses.
+    static var strongLabelColor: NSColor { creamColor.withAlphaComponent(0.8) }
     static var mutedLabelColor: NSColor { creamColor.withAlphaComponent(0.5) }
+    /// Used for secondary captions like the friendly name beneath a port.
+    static var ghostLabelColor: NSColor { creamColor.withAlphaComponent(0.4) }
     static var subtleLabelColor: NSColor { creamColor.withAlphaComponent(0.3) }
 
     /// Running-server indicator dot color. Soft green that reads against the dark bg.

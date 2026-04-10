@@ -256,7 +256,7 @@ class HoverRowView: NSTableRowView {
         }
         // Primary text — tag 101 (project name on project rows, address on server rows).
         if let nameLabel = cell.viewWithTag(101) as? NSTextField {
-            nameLabel.textColor = creamColor.withAlphaComponent(isHovered ? 1.0 : 0.5)
+            nameLabel.textColor = isHovered ? creamColor : Theme.mutedLabelColor
         }
     }
 }

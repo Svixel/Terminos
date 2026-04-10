@@ -138,7 +138,7 @@ class ProjectSidebarView: NSView {
 
         if animated {
             NSAnimationContext.runAnimationGroup({ ctx in
-                ctx.duration = 0.2
+                ctx.duration = Theme.sidebarAnim
                 ctx.timingFunction = CAMediaTimingFunction(name: .easeInEaseOut)
                 scrollView.animator().alphaValue = targetAlpha
             }, completionHandler: finalize)
@@ -196,7 +196,7 @@ class ProjectSidebarView: NSView {
         tableView.addTableColumn(column)
         tableView.headerView = nil
         tableView.backgroundColor = .clear
-        tableView.rowHeight = 28
+        tableView.rowHeight = Theme.rowHeight
         tableView.intercellSpacing = NSSize(width: 0, height: 0)
         tableView.selectionHighlightStyle = .none
         // .plain disables AppKit's automatic leading inset so the cell's own x=20
@@ -224,7 +224,7 @@ class ProjectSidebarView: NSView {
         serversTableView.addTableColumn(column)
         serversTableView.headerView = nil
         serversTableView.backgroundColor = .clear
-        serversTableView.rowHeight = 32
+        serversTableView.rowHeight = Theme.serverRowHeight
         serversTableView.intercellSpacing = NSSize(width: 0, height: 0)
         serversTableView.selectionHighlightStyle = .none
         serversTableView.style = .plain
@@ -338,32 +338,37 @@ extension ProjectSidebarView: NSTableViewDataSource, NSTableViewDelegate {
         cell.identifier = cellID
         cell.subviews.forEach { $0.removeFromSuperview() }
 
-        let rowHeight: CGFloat = 28
+        let rowHeight = Theme.rowHeight
         let project = projects[row]
 
         let iconView = makeIconView(named: "file-terminal-solid-sharp.svg", size: 16, alpha: 0.5)
-        iconView.frame = NSRect(x: 20, y: (rowHeight - 16) / 2, width: 16, height: 16)
+        iconView.frame = NSRect(x: Theme.cellLeading, y: (rowHeight - 16) / 2, width: 16, height: 16)
         iconView.tag = 100
         cell.addSubview(iconView)
 
         let nameLabel = NSTextField(labelWithString: project.name)
         nameLabel.tag = 101
         nameLabel.font = uiFont.withSize(12)
-        nameLabel.textColor = creamColor.withAlphaComponent(0.5)
+        nameLabel.textColor = Theme.mutedLabelColor
         nameLabel.backgroundColor = .clear
         nameLabel.isBordered = false
         nameLabel.isEditable = false
         nameLabel.lineBreakMode = .byTruncatingTail
         nameLabel.sizeToFit()
         let nameHeight = nameLabel.frame.height
-        nameLabel.frame = NSRect(x: 42, y: (rowHeight - nameHeight) / 2, width: bounds.width - 84, height: nameHeight)
+        nameLabel.frame = NSRect(
+            x: Theme.cellTextLeading,
+            y: (rowHeight - nameHeight) / 2,
+            width: bounds.width - Theme.cellTextLeading * 2,
+            height: nameHeight
+        )
         cell.addSubview(nameLabel)
 
         var iconX = bounds.width - 16
         if project.gitStatus != .none {
             let svgName = project.gitStatus == .github ? "github-solid-sharp.svg" : "git-branch-solid-sharp.svg"
             let gitView = makeIconView(named: svgName, size: 12, alpha: 0.3)
-            iconX -= 14
+            iconX -= Theme.cellIconStride
             gitView.frame = NSRect(x: iconX, y: (rowHeight - 12) / 2, width: 12, height: 12)
             cell.addSubview(gitView)
         }
@@ -372,13 +377,13 @@ extension ProjectSidebarView: NSTableViewDataSource, NSTableViewDelegate {
         for icon in stackIcons {
             if icon.hasSuffix(".svg") {
                 let sv = makeIconView(named: icon, size: 12, alpha: 0.3)
-                iconX -= 14
+                iconX -= Theme.cellIconStride
                 sv.frame = NSRect(x: iconX, y: (rowHeight - 12) / 2, width: 12, height: 12)
                 cell.addSubview(sv)
             } else {
                 let glyph: UInt32 = icon == "jsx-02" ? jsxGlyph : zapGlyph
                 let label = NSTextField(labelWithAttributedString: hugeIconString(glyph, size: 10, alpha: 0.3))
-                iconX -= 14
+                iconX -= Theme.cellIconStride
                 label.frame = NSRect(x: iconX, y: (rowHeight - 16) / 2, width: 14, height: 16)
                 cell.addSubview(label)
             }
@@ -399,7 +404,7 @@ extension ProjectSidebarView: NSTableViewDataSource, NSTableViewDelegate {
         cell.subviews.forEach { $0.removeFromSuperview() }
 
         let item = runningServers[row]
-        let rowHeight: CGFloat = 32
+        let rowHeight = Theme.serverRowHeight
         let dotSize: CGFloat = 8
 
         if isCollapsedRail {
@@ -425,7 +430,7 @@ extension ProjectSidebarView: NSTableViewDataSource, NSTableViewDelegate {
         // Status dot — sits in the same x slot as the project terminal icon.
         let dot = StatusDotView(diameter: dotSize, color: Theme.statusRunningColor)
         dot.frame = NSRect(
-            x: 20 + (16 - dotSize) / 2,
+            x: Theme.cellLeading + (16 - dotSize) / 2,
             y: (rowHeight - dotSize) / 2,
             width: dotSize,
             height: dotSize
@@ -437,7 +442,7 @@ extension ProjectSidebarView: NSTableViewDataSource, NSTableViewDelegate {
         let titleLabel = NSTextField(labelWithString: titleText)
         titleLabel.tag = 101
         titleLabel.font = uiFont.withSize(13)
-        titleLabel.textColor = creamColor.withAlphaComponent(0.8)
+        titleLabel.textColor = Theme.strongLabelColor
         titleLabel.backgroundColor = .clear
         titleLabel.isBordered = false
         titleLabel.isEditable = false
@@ -445,9 +450,9 @@ extension ProjectSidebarView: NSTableViewDataSource, NSTableViewDelegate {
         titleLabel.sizeToFit()
         let titleHeight = titleLabel.frame.height
         titleLabel.frame = NSRect(
-            x: 42,
+            x: Theme.cellTextLeading,
             y: (rowHeight - titleHeight) / 2,
-            width: max(0, cellWidth - 56),
+            width: max(0, cellWidth - Theme.cellTextLeading - Theme.cellIconStride),
             height: titleHeight
         )
         cell.addSubview(titleLabel)
