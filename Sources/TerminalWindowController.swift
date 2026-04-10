@@ -113,9 +113,7 @@ class TerminalWindowController: NSWindowController, SidebarDelegate, TabBarDeleg
         mainLayout.setEmptyState(tabManager.tabs.isEmpty)
 
         // Show active terminal
-        for subview in mainLayout.terminalContainer.subviews {
-            subview.removeFromSuperview()
-        }
+        mainLayout.terminalContainer.subviews.forEach { $0.removeFromSuperview() }
         if let activeTab = tabManager.activeTab {
             mainLayout.terminalContainer.addSubview(activeTab.terminalView)
             mainLayout.terminalContainer.layoutActiveTerminal()

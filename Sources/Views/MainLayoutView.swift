@@ -21,12 +21,11 @@ class TerminalContainerView: NSView {
     }
 
     func layoutActiveTerminal() {
-        for subview in subviews {
-            let terminalWidth = min(bounds.width - padding * 2, maxTerminalWidth)
-            let terminalHeight = bounds.height - padding * 2
-            let x = (bounds.width - terminalWidth) / 2
-            subview.frame = NSRect(x: x, y: padding, width: terminalWidth, height: terminalHeight)
-        }
+        guard let terminal = subviews.first else { return }
+        let terminalWidth = min(bounds.width - padding * 2, maxTerminalWidth)
+        let terminalHeight = bounds.height - padding * 2
+        let x = (bounds.width - terminalWidth) / 2
+        terminal.frame = NSRect(x: x, y: padding, width: terminalWidth, height: terminalHeight)
     }
 }
 

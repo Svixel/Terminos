@@ -1,5 +1,14 @@
 import Cocoa
 
+// MARK: - Menu helpers
+
+/// Convert an `NSEvent` function-key constant (e.g. `NSRightArrowFunctionKey`)
+/// into a key-equivalent string. Returns `""` on failure so a malformed
+/// constant degrades to "no shortcut" instead of crashing the app.
+private func functionKeyEquivalent(_ functionKey: Int) -> String {
+    Unicode.Scalar(functionKey).map { String($0) } ?? ""
+}
+
 // MARK: - Main
 
 let app = NSApplication.shared
@@ -26,10 +35,10 @@ let shellMenu = NSMenu(title: "Shell")
 shellMenu.addItem(withTitle: "New Tab", action: #selector(AppDelegate.newTab(_:)), keyEquivalent: "t")
 shellMenu.addItem(withTitle: "Close Tab", action: #selector(AppDelegate.closeTab(_:)), keyEquivalent: "w")
 shellMenu.addItem(NSMenuItem.separator())
-let nextTabItem = NSMenuItem(title: "Next Tab", action: #selector(AppDelegate.nextTab(_:)), keyEquivalent: String(Unicode.Scalar(NSRightArrowFunctionKey)!))
+let nextTabItem = NSMenuItem(title: "Next Tab", action: #selector(AppDelegate.nextTab(_:)), keyEquivalent: functionKeyEquivalent(NSRightArrowFunctionKey))
 nextTabItem.keyEquivalentModifierMask = [.command, .shift]
 shellMenu.addItem(nextTabItem)
-let prevTabItem = NSMenuItem(title: "Previous Tab", action: #selector(AppDelegate.prevTab(_:)), keyEquivalent: String(Unicode.Scalar(NSLeftArrowFunctionKey)!))
+let prevTabItem = NSMenuItem(title: "Previous Tab", action: #selector(AppDelegate.prevTab(_:)), keyEquivalent: functionKeyEquivalent(NSLeftArrowFunctionKey))
 prevTabItem.keyEquivalentModifierMask = [.command, .shift]
 shellMenu.addItem(prevTabItem)
 shellMenuItem.submenu = shellMenu

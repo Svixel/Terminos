@@ -141,16 +141,12 @@ class ProjectSidebarView: NSView {
     /// Refresh the bottom :SERVERS section. Each server is paired with the name
     /// of the project its working directory lives inside.
     func updateServers(_ servers: [ServerInfo]) {
-        runningServers = servers.map { server -> (server: ServerInfo, projectName: String?) in
-            var projectName: String?
-            if let cwd = server.cwd {
-                for project in projects {
+        runningServers = servers.map { server in
+            let projectName = server.cwd.flatMap { cwd in
+                projects.first { project in
                     let projectPath = (projectsPath as NSString).appendingPathComponent(project.name)
-                    if cwd == projectPath || cwd.hasPrefix(projectPath + "/") {
-                        projectName = project.name
-                        break
-                    }
-                }
+                    return cwd == projectPath || cwd.hasPrefix(projectPath + "/")
+                }?.name
             }
             return (server: server, projectName: projectName)
         }
