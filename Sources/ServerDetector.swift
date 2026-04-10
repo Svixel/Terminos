@@ -168,6 +168,11 @@ class ServerDetector {
         }
     }
 
+    /// Hard ceiling on any subprocess. Real `lsof`/`ps` calls finish in
+    /// milliseconds; if one runs longer than this we'd rather log and move on
+    /// than freeze the polling timer.
+    private static let subprocessTimeout: DispatchTimeInterval = .seconds(5)
+
     private func runCommand(_ path: String, args: [String]) -> String {
         let process = Process()
         let pipe = Pipe()
@@ -175,8 +180,34 @@ class ServerDetector {
         process.arguments = args
         process.standardOutput = pipe
         process.standardError = FileHandle.nullDevice
-        try? process.run()
-        process.waitUntilExit()
+
+        do {
+            try process.run()
+        } catch {
+            NSLog("[ServerDetector] failed to launch \(path) \(args.joined(separator: " ")): \(error)")
+            return ""
+        }
+
+        // Wait off-thread so we can apply a hard deadline.
+        let semaphore = DispatchSemaphore(value: 0)
+        DispatchQueue.global(qos: .utility).async {
+            process.waitUntilExit()
+            semaphore.signal()
+        }
+
+        if semaphore.wait(timeout: .now() + Self.subprocessTimeout) == .timedOut {
+            NSLog("[ServerDetector] \(path) timed out after \(Self.subprocessTimeout); terminating")
+            process.terminate()
+            process.waitUntilExit()
+            return ""
+        }
+
+        if process.terminationStatus != 0 {
+            NSLog("[ServerDetector] \(path) exited with status \(process.terminationStatus)")
+            // Still fall through and return whatever stdout was captured — empty
+            // is the same shape callers already handle.
+        }
+
         return String(data: pipe.fileHandleForReading.readDataToEndOfFile(), encoding: .utf8) ?? ""
     }
 }

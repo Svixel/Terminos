@@ -146,6 +146,8 @@ class TerminalWindowController: NSWindowController, SidebarDelegate, TabBarDeleg
 }
 
 extension TerminalWindowController: LocalProcessTerminalViewDelegate {
+    /// Protocol stub — Terminos relies on AppKit autoresizing to forward size
+    /// changes to the embedded terminal, so the controller has nothing to do here.
     func sizeChanged(source: LocalProcessTerminalView, newCols: Int, newRows: Int) {}
 
     func setTerminalTitle(source: LocalProcessTerminalView, title: String) {
@@ -159,6 +161,8 @@ extension TerminalWindowController: LocalProcessTerminalViewDelegate {
         }
     }
 
+    /// Protocol stub — Terminos doesn't track per-tab cwd updates from OSC 7
+    /// hints; tab titles come from `setTerminalTitle` instead.
     func hostCurrentDirectoryUpdate(source: TerminalView, directory: String?) {}
 
     func processTerminated(source: TerminalView, exitCode: Int32?) {
